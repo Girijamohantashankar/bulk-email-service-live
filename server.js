@@ -1,24 +1,26 @@
-require('dotenv').config(); 
-const express = require('express');
-const multer = require('multer');
-const xlsx = require('xlsx');
-const nodemailer = require('nodemailer');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const deepEmailValidator = require('deep-email-validator');
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const path = require('path');
-
+require("dotenv").config();
+const express = require("express");
+const multer = require("multer");
+const xlsx = require("xlsx");
+const nodemailer = require("nodemailer");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const deepEmailValidator = require("deep-email-validator");
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const path = require("path");
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-if (!process.env.MONGODB_URI || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  console.error('Missing required environment variables.');
-  process.exit(1); 
+if (
+  !process.env.MONGODB_URI ||
+  !process.env.EMAIL_USER ||
+  !process.env.EMAIL_PASS
+) {
+  console.error("Missing required environment variables.");
+  process.exit(1);
 }
-
 
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
@@ -29,15 +31,15 @@ const emailStatsSchema = new mongoose.Schema({
   successCount: { type: Number, default: 0 },
 });
 
-const EmailStats = mongoose.model('EmailStats', emailStatsSchema);
+const EmailStats = mongoose.model("EmailStats", emailStatsSchema);
 
 const passwordSchema = new mongoose.Schema({
   hashedPassword: { type: String, required: true },
 });
 
-const Password = mongoose.model('Password', passwordSchema);
+const Password = mongoose.model("Password", passwordSchema);
 
-app.use(cors({origin: '*'}));
+app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
@@ -45,7 +47,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
@@ -56,47 +58,48 @@ async function isEmailValid(email) {
   return deepEmailValidator.validate(email);
 }
 
-app.post('/set-password', async (req, res) => {
+app.post("/set-password", async (req, res) => {
   const { password } = req.body;
   try {
     const existingPasswordEntry = await Password.findOne({});
     if (existingPasswordEntry) {
-      return res.status(400).send('Password already set.'); 
+      return res.status(400).send("Password already set.");
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const passwordEntry = new Password({ hashedPassword });
 
     await passwordEntry.save();
-    res.status(201).send('Password set successfully');
+    res.status(201).send("Password set successfully");
   } catch (error) {
-    console.error('Error setting password:', error); 
-    res.status(500).send('Error setting password');
+    console.error("Error setting password:", error);
+    res.status(500).send("Error setting password");
   }
 });
 
-
-app.post('/validate-password', async (req, res) => {
+app.post("/validate-password", async (req, res) => {
   const { password } = req.body;
 
   try {
     const passwordEntry = await Password.findOne({});
     if (passwordEntry) {
-      const isMatch = await bcrypt.compare(password, passwordEntry.hashedPassword);
+      const isMatch = await bcrypt.compare(
+        password,
+        passwordEntry.hashedPassword
+      );
       return res.json({ isValid: isMatch });
     } else {
       return res.json({ isValid: false });
     }
   } catch (error) {
-    console.error('Error validating password:', error); 
-    res.status(500).send('Error validating password');
+    console.error("Error validating password:", error);
+    res.status(500).send("Error validating password");
   }
 });
 
-
-app.post('/validate-emails', async (req, res) => {
+app.post("/validate-emails", async (req, res) => {
   const { emails } = req.body;
-  const emailList = emails.split(',').map(email => email.trim());
+  const emailList = emails.split(",").map((email) => email.trim());
 
   let invalidEmails = [];
   let validEmails = [];
@@ -115,16 +118,16 @@ app.post('/validate-emails', async (req, res) => {
   res.json({ validEmails, invalidEmails });
 });
 
-app.post('/send-emails', upload.single('file'), async (req, res) => {
+app.post("/send-emails", upload.single("file"), async (req, res) => {
   const { emails } = req.body;
-  const emailList = emails.split(',').map(email => email.trim());
+  const emailList = emails.split(",").map((email) => email.trim());
 
   let fileEmails = [];
   if (req.file) {
     const workbook = xlsx.read(req.file.buffer);
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = xlsx.utils.sheet_to_json(worksheet);
-    fileEmails = data.map((row) => row.Email); 
+    fileEmails = data.map((row) => row.Email);
   }
 
   const allEmails = [...emailList, ...fileEmails];
@@ -135,14 +138,15 @@ app.post('/send-emails', upload.single('file'), async (req, res) => {
     const validation = await isEmailValid(email);
     if (!validation.valid) {
       failedEmails.push(email);
-      return; 
+      return;
     }
 
     return new Promise((resolve) => {
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: email,
-        subject: 'Unlock Your Online Potential with Professional Web Development',
+        subject:
+          "Unlock Your Online Potential with Professional Web Development",
         html: `
             <html>
             <head>
@@ -274,8 +278,7 @@ app.post('/send-emails', upload.single('file'), async (req, res) => {
             </body>
             </html>
         `,
-    };
-    
+      };
 
       transporter.sendMail(mailOptions, (error, info) => {
         if (error) {
@@ -292,33 +295,39 @@ app.post('/send-emails', upload.single('file'), async (req, res) => {
 
   await Promise.all(promises);
   if (successEmails.length > 0) {
-    await EmailStats.findOneAndUpdate({}, { $inc: { successCount: successEmails.length } }, { upsert: true });
+    await EmailStats.findOneAndUpdate(
+      {},
+      { $inc: { successCount: successEmails.length } },
+      { upsert: true }
+    );
   }
 
   res.json({ successEmails, failedEmails });
 });
 
-app.get('/email-stats', async (req, res) => {
+app.get("/email-stats", async (req, res) => {
   const stats = await EmailStats.findOne({});
-  res.json(stats || { successCount: 0 }); 
+  res.json(stats || { successCount: 0 });
 });
 
-app.get('/ping', (req, res) => {
-  res.send('API is live and running!');
+app.get("/ping", (req, res) => {
+  res.send("API is live and running!");
 });
 
-app.use(express.static(path.join(__dirname, 'frontend', 'build')));
+app.use(express.static(path.join(__dirname, "frontend", "build")));
 
 // Handle requests for routes not handled by the API
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend', 'build', 'index.html'), (err) => {
-    if (err) {
-      res.status(500).send(err);
+app.get("*", (req, res) => {
+  res.sendFile(
+    path.join(__dirname, "frontend", "build", "index.html"),
+    (err) => {
+      if (err) {
+        res.status(500).send(err);
+      }
     }
-  });
+  );
 });
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Server running on port ${port}`);
+app.listen(port, () => {
+  console.log("server is running on port" + " " + port);
 });
-
